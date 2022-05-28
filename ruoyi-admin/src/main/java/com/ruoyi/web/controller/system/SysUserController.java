@@ -1,8 +1,12 @@
 package com.ruoyi.web.controller.system;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletResponse;
+
+import com.ruoyi.common.core.page.PageDomain;
+import com.ruoyi.common.core.page.TableSupport;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -56,9 +60,51 @@ public class SysUserController extends BaseController
     @GetMapping("/list")
     public TableDataInfo list(SysUser user)
     {
-        startPage();
-        List<SysUser> list = userService.selectUserList(user);
-        return getDataTable(list);
+        SysUser sysUser = getLoginUser().getUser();
+
+        //分页插件
+        PageDomain pageDomain = TableSupport.buildPageRequest();
+        Integer pageNum = pageDomain.getPageNum();
+        Integer pageSize = pageDomain.getPageSize();
+
+        //获取用户角色信息
+        List<Long> roleList = roleService.selectRoleListByUserId(sysUser.getUserId());
+
+        //管理员角色检测
+        int adminRole = 0;
+        for (Long roleId : roleList) {
+            //只要检测到管理员角色，就不再进行检测
+            if(roleId.equals(1L)){
+                adminRole = 1;
+                break;
+            }
+        }
+
+        //数据过滤
+        List<SysUser> list;
+        if(adminRole == 1){
+            //管理员角色，查询所有用户
+            list = userService.selectUserList(user);
+        }else{
+            //代理用户，查询自己创建的用户
+            List<SysUser> userList = userService.selectUserList(user);
+            List<SysUser> userList_ok = new ArrayList<>();
+            for (SysUser userData : userList) {
+                if(userData.getCreateBy().equals(sysUser.getUserName())){
+                    userList_ok.add(userData);
+                }
+            }
+            list = userList_ok;
+        }
+
+        //数据分页
+        int num = list.size();
+        list = list.stream().skip((pageNum - 1) * pageSize).limit(pageSize).collect(Collectors.toList());
+        TableDataInfo rspData = new TableDataInfo();
+        rspData.setCode(0);
+        rspData.setRows(list);
+        rspData.setTotal(num);
+        return rspData;
     }
 
     @Log(title = "用户管理", businessType = BusinessType.EXPORT)
